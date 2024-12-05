@@ -11,7 +11,8 @@ local google = {
   },
   config = {
     default_source = "auto",
-    default_target = "en"
+    default_target = "en",
+    default_alternate_target = "ru"
   }
 }
 -- https://cloud.google.com/translate/docs/languages
@@ -139,6 +140,10 @@ end
 function google.switch(source, target)
   if source == "auto" then
     return source, target
+  elseif target == google.config.default_target then
+    return target, google.config.default_alternate_target
+  elseif target == google.config.default_alternate_target then
+    return target, google.config.default_target
   else
     return target, source
   end
@@ -146,13 +151,49 @@ end
 
 function google.translate(text, source, target)
   local ok, translation
-  source, target = source or google.config.default_source, target or google.config.default_target
+  source = source or google.config.default_source
+  local selected_target = target
+  
+  -- Автоматический выбор целевого языка
+  if source == "auto" then
+    -- Сначала определяем исходный язык
+    local detected
+    for _, api in ipairs(google._apis) do
+      ok, detected = pcall(api.post, api, nil, {
+        q = text,
+        sl = "auto",
+        tl = google.config.default_target
+      })
+      if ok then
+        if #detected == 1 then
+          detected = detected[2]
+        else
+          detected = detected[3]
+        end
+        break
+      end
+    end
+    
+    if detected then
+      -- Выбираем целевой язык на основе определенного исходного
+      if detected == google.config.default_target then
+        selected_target = google.config.default_alternate_target
+      else
+        selected_target = google.config.default_target
+      end
+    else
+      selected_target = target or google.config.default_target
+    end
+  else
+    selected_target = target or google.config.default_target
+  end
 
+  -- Основной код перевода
   for _, api in ipairs(google._apis) do
     ok, translation = pcall(api.post, api, nil, {
       q = text,
       sl = source,
-      tl = target
+      tl = selected_target
     })
 
     if ok then
@@ -160,12 +201,14 @@ function google.translate(text, source, target)
         translation = vim.tbl_flatten(translation)
         return {
           text = translation[1],
-          detected = translation[2]
+          detected = translation[2],
+          target = selected_target -- Важно: всегда возвращаем выбранный target
         }
       else -- translate.googleapis.com
         return {
           text = table.concat(vim.tbl_map(function(tbl) return tbl[1] end, translation[1])),
-          detected = source == "auto" and translation[3] or nil
+          detected = source == "auto" and translation[3] or nil,
+          target = selected_target -- Важно: всегда возвращаем выбранный target
         }
       end
     end

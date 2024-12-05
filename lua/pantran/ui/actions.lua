@@ -85,6 +85,10 @@ actions.translate = async.wrap(function(ui, force)
     ui.previous.input = input
     ui.translation = translated.text
     ui.detected = translated.detected
+    -- Добавляем обновление target если он был изменен движком
+    if translated.target then
+      ui.target = translated.target
+    end
   end
   ui:unlock()
 end)
